@@ -154,7 +154,7 @@ fi
 
 # Build the actual kernel
 log "Building kernel..."
-make $BUILD_FLAGS Image modules
+make $BUILD_FLAGS Image
 
 # Check KMI Function symbol
 $KMI_CHECK "$KSRC/android/abi_gki_aarch64.xml" "$MODULE_SYMVERS"
