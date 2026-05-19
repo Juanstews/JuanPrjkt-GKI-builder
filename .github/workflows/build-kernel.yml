@@ -121,6 +121,11 @@ jobs:
             NEUTRON_19) echo "CLANG_PATH=$HOME/toolchain/neutron-clang" >> $GITHUB_ENV ;;
             AOSP_12)    echo "CLANG_PATH=$HOME/toolchain/aosp-clang-r445002" >> $GITHUB_ENV ;;
           esac
+          # ── Export CLANG_PATH ───────────────────────────────────────────
+         YUKI_23)
+        echo "CLANG_PATH=$HOME/toolchain/yuki-clang" >> $GITHUB_ENV
+        ;;
+    esac
 
       # ── Kernel source ─────────────────────────────────────────────────────
       - name: Shallow-clone kernel source
