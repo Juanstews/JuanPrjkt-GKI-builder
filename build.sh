@@ -34,21 +34,30 @@ echo "Clang version   : $("$CLANG_PATH/bin/clang" --version | head -n1)"
 
 # ── Compiler string ───────────────────────────────────────────────────
 case "${CLANG_VARIANT}" in
-    NEUTRON_19)
-        export KBUILD_COMPILER_STRING="Neutron Clang 19.0.0 +PGO +BOLT +Polly +ThinLTO +O3"
-        ;;
-    ZYC_12)
-        export KBUILD_COMPILER_STRING="ZYC Clang 12.0.0 +ThinLTO +O3"
-        ;;
-    AOSP_12)
-        export KBUILD_COMPILER_STRING="AOSP Clang r445002 (LLVM 12.0.5)"
-        ;;
-    YUKI_23)
-        export KBUILD_COMPILER_STRING="Yuki Clang 23 +BOLT +ThinLTO +O3"
-        ;;
-    *)
-        export KBUILD_COMPILER_STRING="Unknown Clang"
-        ;;
+NEUTRON_19)
+export KBUILD_COMPILER_STRING="Neutron Clang 19.0.0 +PGO +BOLT +Polly +ThinLTO +O3"
+;;
+
+ZYC_12)  
+    export KBUILD_COMPILER_STRING="ZYC Clang 12.0.0 +ThinLTO +O3"  
+    ;;  
+
+AOSP_12)  
+    export KBUILD_COMPILER_STRING="AOSP Clang r445002 (LLVM 12.0.5)"  
+    ;;  
+
+YUKI_22)  
+    export KBUILD_COMPILER_STRING="Yuki Clang 22.0.0.git +O3 +FullLTO"  
+    ;;  
+
+YUKI_23)  
+    export KBUILD_COMPILER_STRING="Yuki Clang 23 +BOLT +FullLTO +O3"  
+    ;;  
+
+*)  
+    export KBUILD_COMPILER_STRING="Unknown Clang"  
+    ;;
+
 esac
 
 echo "Compiler string : $KBUILD_COMPILER_STRING"
@@ -94,7 +103,7 @@ echo "Checking for x86 leakage..."
 grep CONFIG_X86 out/.config || echo "OK: No X86 config"
 
 # ── LTO config ───────────────────────────────────────────────────────
-echo "Configuring THIN LTO..."
+echo "Configuring FULL LTO..."
 
 scripts/config --file out/.config \
 -e LTO_CLANG \
