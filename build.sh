@@ -9,7 +9,6 @@ trap 'echo "Build failed at line $LINENO. Exit code: $?" >&2' ERR
 export ARCH=arm64
 export LLVM=1
 export LLVM_IAS=1
-export PGO_INSTRUMENT=1
 export KBUILD_BUILD_USER="GrayRavens-Team"
 export KBUILD_BUILD_HOST="ZenithXHikari-KasumiXIyashi"
 
@@ -21,22 +20,18 @@ fi
 
 export PATH="${CLANG_PATH}/bin:${PATH}"
 
-echo "Using toolchain : ${CLANG_VARIANT:-unknown}"
+echo "CLANG_VARIANT   : '${CLANG_VARIANT}'"
 echo "Toolchain path  : $CLANG_PATH"
 echo "Clang version   : $("$CLANG_PATH/bin/clang" --version | head -n1)"
 
 # ── Compiler string (shown in kernel version) ────────────────────────────────
-case "${CLANG_VARIANT}" in
-    NEUTRON_19)
-        export KBUILD_COMPILER_STRING="Neutron Clang 19.0.0 +PGO +BOLT +Polly +ThinLTO +O3"
-        ;;
-    ZYC_12)
-        export KBUILD_COMPILER_STRING="ZYC Clang 12.0.0 +ThinLTO +O3"
-        ;;
-    AOSP_12)
-        export KBUILD_COMPILER_STRING="AOSP Clang r445002 (LLVM 12.0.5)"
-        ;;
-esac
+if [ "${CLANG_VARIANT}" = "NEUTRON_19" ]; then
+    export KBUILD_COMPILER_STRING="Neutron Clang 19.0.0 +PGO +BOLT +Polly +ThinLTO +O3"
+elif [ "${CLANG_VARIANT}" = "AOSP_12" ]; then
+    export KBUILD_COMPILER_STRING="AOSP Clang r445002 (LLVM 12.0.5)"
+else
+    export KBUILD_COMPILER_STRING="$("$CLANG_PATH/bin/clang" --version | head -n1)"
+fi
 
 echo "Compiler string : $KBUILD_COMPILER_STRING"
 
