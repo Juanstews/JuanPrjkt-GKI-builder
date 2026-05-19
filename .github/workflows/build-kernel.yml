@@ -151,21 +151,26 @@ jobs:
           else
             curl -LSs https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh | bash -s dev-susfs
           fi
-           
+
       - name: Verify KSU integration (${{ matrix.ksu }})
         if: matrix.ksu != 'VANILLA'
         working-directory: kernel
         run: |
           echo "=== KSU directory check ==="
           ls -la KernelSU* 2>/dev/null || echo "WARNING: No KernelSU dir found!"
+
           echo "=== drivers/kernelsu check ==="
           ls drivers/kernelsu/ 2>/dev/null || echo "WARNING: drivers/kernelsu missing!"
+
           echo "=== Kconfig/Makefile hooks ==="
-          grep -r "kernelsu\|KSU" drivers/Makefile drivers/Kconfig 2>/dev/null || echo "WARNING: No KSU hooks in drivers!"
+          grep -r "kernelsu\|KSU" drivers/Makefile drivers/Kconfig 2>/dev/null || \
+            echo "WARNING: No KSU hooks in drivers!"
+
           echo "=== gki_defconfig KSU entries ==="
-          grep "CONFIG_KSU" arch/arm64/configs/gki_defconfig || echo "WARNING: No KSU configs in gki_defconfig!"
-      
-       - name: Apply SUSFS patches (KSUN only)
+          grep "CONFIG_KSU" arch/arm64/configs/gki_defconfig || \
+            echo "WARNING: No KSU configs in gki_defconfig!"
+
+      - name: Apply SUSFS patches (KSUN only)
         if: matrix.ksu == 'KSUN'
         working-directory: kernel
         run: |
@@ -176,7 +181,6 @@ jobs:
           cp -r "$susfs/include" .
           cp -r "$susfs/50_add_susfs_in_gki-android12-5.10.patch" .
           patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch
-
 
       # ── BUILD (FIXED CLANG USAGE) ───────────────────────────
       - name: Build kernel
