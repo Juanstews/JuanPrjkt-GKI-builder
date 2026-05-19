@@ -159,3 +159,77 @@ jobs:
           else
             curl -LSs https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh | bash -s dev-susfs
             echo -e "\nCONFIG_KSU=y\nCONFIG_KSU_SUSFS=y" >>
+
+            # ── KSU setup ─────────────────────────────────────────────────────────
+      - name: Apply KernelSU (${{ matrix.ksu }})
+        if: matrix.ksu != 'VANILLA'
+        working-directory: kernel
+        run: |
+          if [ "${{ matrix.ksu }}" = "KOWSU" ]; then
+            curl -LSs "https://raw.githubusercontent.com/KOWX712/KernelSU/main/kernel/setup.sh" | bash -s master
+            printf '\nCONFIG_KSU=y\nCONFIG_KSU_MANUAL_SU=n\nCONFIG_KSU_SUSFS=n\n' \
+              >> arch/arm64/configs/gki_defconfig
+          else
+            curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh" | bash -s dev-susfs
+            printf '\nCONFIG_KSU=y\nCONFIG_KSU_MANUAL_SU=n\nCONFIG_KSU_SUSFS=y\n' \
+              >> arch/arm64/configs/gki_defconfig
+          fi
+
+      - name: Verify KSU integration (${{ matrix.ksu }})
+        if: matrix.ksu != 'VANILLA'
+        working-directory: kernel
+        run: |
+          echo "=== KSU directory check ==="
+          ls -la KernelSU* 2>/dev/null || echo "WARNING: No KernelSU dir found!"
+          echo "=== drivers/kernelsu check ==="
+          ls drivers/kernelsu/ 2>/dev/null || echo "WARNING: drivers/kernelsu missing!"
+          echo "=== Kconfig/Makefile hooks ==="
+          grep -r "kernelsu\|KSU" drivers/Makefile drivers/Kconfig 2>/dev/null || echo "WARNING: No KSU hooks in drivers!"
+          echo "=== gki_defconfig KSU entries ==="
+          grep "CONFIG_KSU" arch/arm64/configs/gki_defconfig || echo "WARNING: No KSU configs in gki_defconfig!"
+
+      - name: Apply SUSFS patches (KSUN only)
+        if: matrix.ksu == 'KSUN'
+        working-directory: kernel
+        run: |
+          git clone https://gitlab.com/simonpunk/susfs4ksu/ -b gki-android12-5.10 sus
+          rm -rf sus/.git
+          susfs=sus/kernel_patches
+          cp -r "$susfs/fs" .
+          cp -r "$susfs/include" .
+          cp -r "$susfs/50_add_susfs_in_gki-android12-5.10.patch" .
+          patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch
+
+      # ── Build ─────────────────────────────────────────────────────────────
+      - name: Run build.sh
+        working-directory: kernel
+        env:
+          CLANG_PATH: ${{ env.CLANG_PATH }}
+          CLANG_VARIANT: ${{ matrix.clang }}
+        run: |
+          cp "$GITHUB_WORKSPACE/build.sh" .
+          chmod +x build.sh
+          ./build.sh
+
+      # ── Package ───────────────────────────────────────────────────────────
+      - name: Package with AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/XTENSEI/GrayRavens-anykernel anykernel
+          cp kernel/out/arch/arm64/boot/Image anykernel/Image
+          cd anykernel
+          zip -r9 "../${{ inputs.kernel_name }}-${{ matrix.ksu }}-${{ matrix.clang }}.zip" . \
+            --exclude="*.git*" --exclude="README.md" --exclude="*.placeholder"
+
+      - name: Upload kernel image
+        uses: actions/upload-artifact@v4
+        with:
+          name: Image-${{ matrix.ksu }}-${{ matrix.clang }}-${{ inputs.kernel_ref }}
+          path: kernel/out/arch/arm64/boot/Image
+          if-no-files-found: error
+
+      - name: Upload flashable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.kernel_name }}-${{ matrix.ksu }}-${{ matrix.clang }}
+          path: ${{ inputs.kernel_name }}-${{ matrix.ksu }}-${{ matrix.clang }}.zip
+          if-no-files-found: error
