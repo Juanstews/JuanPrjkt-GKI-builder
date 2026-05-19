@@ -3,13 +3,13 @@ on:
   workflow_dispatch:
     inputs:
       ksu_variant:
-        description: 'KernelSU variant (VANILLA = build with no KSU at all)'
+        description: 'KernelSU variant (ALL = build KOWSU + KSUN + VANILLA)'
         type: choice
         options:
           - KOWSU
           - KSUN
-          - KSUN_ALL_MANAGERS
           - VANILLA
+          - ALL
         default: KOWSU
       clang_variant:
         description: 'Clang toolchain to use'
@@ -29,8 +29,29 @@ on:
         default: GrayRavens-Zenithed
 
 jobs:
-  build:
+  # ── Determine which variants to build ──────────────────────────────────────
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      variants: ${{ steps.set-variants.outputs.variants }}
+    steps:
+      - name: Set variants matrix
+        id: set-variants
+        run: |
+          if [ "${{ inputs.ksu_variant }}" = "ALL" ]; then
+            echo 'variants=["KOWSU","KSUN","VANILLA"]' >> $GITHUB_OUTPUT
+          else
+            echo 'variants=["${{ inputs.ksu_variant }}"]' >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJson(needs.setup.outputs.variants) }}
+
     steps:
       - name: Checkout workflow repo (build.sh lives here)
         uses: actions/checkout@v4
@@ -75,7 +96,7 @@ jobs:
           git lfs pull
           echo "ZYC Clang 12 ready."
 
-      # ── AOSP Clang r445002 (LLVM 12.0.5) ─────────────────────────────────
+      # ── AOSP Clang r445002 ────────────────────────────────────────────────
       - name: Cache AOSP Clang r445002
         if: inputs.clang_variant == 'AOSP_12'
         id: cache-aosp-12
@@ -101,16 +122,18 @@ jobs:
             AOSP_12)    echo "CLANG_PATH=$HOME/toolchain/aosp-clang-r445002" >> $GITHUB_ENV ;;
           esac
 
+      # ── Kernel source ─────────────────────────────────────────────────────
       - name: Shallow-clone kernel source
         run: |
           git clone --depth=1 --branch "${{ inputs.kernel_ref }}" \
             https://github.com/XTENSEI/kernel_common_5.10 kernel
 
-      - name: Apply KernelSU (${{ inputs.ksu_variant }})
-        if: inputs.ksu_variant != 'VANILLA'
+      # ── KSU setup ─────────────────────────────────────────────────────────
+      - name: Apply KernelSU (${{ matrix.variant }})
+        if: matrix.variant != 'VANILLA'
         working-directory: kernel
         run: |
-          if [ "${{ inputs.ksu_variant }}" = "KOWSU" ]; then
+          if [ "${{ matrix.variant }}" = "KOWSU" ]; then
             curl -LSs "https://raw.githubusercontent.com/KOWX712/KernelSU/main/kernel/setup.sh" | bash -s master
             printf '\nCONFIG_KSU=y\nCONFIG_KSU_MANUAL_SU=n\nCONFIG_KSU_SUSFS=n\n' \
               >> arch/arm64/configs/gki_defconfig
@@ -120,8 +143,8 @@ jobs:
               >> arch/arm64/configs/gki_defconfig
           fi
 
-      - name: Verify KSU integration
-        if: inputs.ksu_variant != 'VANILLA'
+      - name: Verify KSU integration (${{ matrix.variant }})
+        if: matrix.variant != 'VANILLA'
         working-directory: kernel
         run: |
           echo "=== KSU directory check ==="
@@ -133,27 +156,8 @@ jobs:
           echo "=== gki_defconfig KSU entries ==="
           grep "CONFIG_KSU" arch/arm64/configs/gki_defconfig || echo "WARNING: No KSU configs in gki_defconfig!"
 
-      - name: Apply All Managers Support patch (KSUN_ALL_MANAGERS only)
-        if: inputs.ksu_variant == 'KSUN_ALL_MANAGERS'
-        working-directory: kernel
-        run: |
-          echo "Patching All Managers Support..."
-          curl -LSs "https://raw.githubusercontent.com/XTENSEI/gki-builder/refs/heads/6.x/kernel-patches/ksu/ksun-add-more-managers-support.patch" \
-            -o /tmp/ksun-add-more-managers-support.patch
-          if [ -d KernelSU-Next ]; then
-            cd KernelSU-Next
-            echo "Current KernelSU-Next branch: $(git branch --show-current)"
-            grep MANAGER_LIST kernel/Kbuild || true
-            patch -p1 < /tmp/ksun-add-more-managers-support.patch
-            echo "Patch applied. New MANAGER_LIST:"
-            grep MANAGER_LIST kernel/Kbuild || true
-          else
-            echo "ERROR: KernelSU-Next directory not found!"
-            exit 1
-          fi
-
-      - name: Apply SUSFS patches (KSUN-based variants only)
-        if: inputs.ksu_variant == 'KSUN' || inputs.ksu_variant == 'KSUN_ALL_MANAGERS'
+      - name: Apply SUSFS patches (KSUN only)
+        if: matrix.variant == 'KSUN'
         working-directory: kernel
         run: |
           git clone https://gitlab.com/simonpunk/susfs4ksu/ -b gki-android12-5.10 sus
@@ -164,6 +168,7 @@ jobs:
           cp -r "$susfs/50_add_susfs_in_gki-android12-5.10.patch" .
           patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch
 
+      # ── Build ─────────────────────────────────────────────────────────────
       - name: Run build.sh
         working-directory: kernel
         env:
@@ -174,24 +179,25 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
+      # ── Package ───────────────────────────────────────────────────────────
       - name: Package with AnyKernel3
         run: |
           git clone --depth=1 https://github.com/XTENSEI/GrayRavens-anykernel anykernel
           cp kernel/out/arch/arm64/boot/Image anykernel/Image
           cd anykernel
-          zip -r9 "../${{ inputs.kernel_name }}-${{ inputs.ksu_variant }}-${{ inputs.clang_variant }}.zip" . \
+          zip -r9 "../${{ inputs.kernel_name }}-${{ matrix.variant }}-${{ inputs.clang_variant }}.zip" . \
             --exclude="*.git*" --exclude="README.md" --exclude="*.placeholder"
 
       - name: Upload kernel image
         uses: actions/upload-artifact@v4
         with:
-          name: Image-${{ inputs.ksu_variant }}-${{ inputs.clang_variant }}-${{ inputs.kernel_ref }}
+          name: Image-${{ matrix.variant }}-${{ inputs.clang_variant }}-${{ inputs.kernel_ref }}
           path: kernel/out/arch/arm64/boot/Image
           if-no-files-found: error
 
       - name: Upload flashable zip
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.kernel_name }}-${{ inputs.ksu_variant }}-${{ inputs.clang_variant }}
-          path: ${{ inputs.kernel_name }}-${{ inputs.ksu_variant }}-${{ inputs.clang_variant }}.zip
+          name: ${{ inputs.kernel_name }}-${{ matrix.variant }}-${{ inputs.clang_variant }}
+          path: ${{ inputs.kernel_name }}-${{ matrix.variant }}-${{ inputs.clang_variant }}.zip
           if-no-files-found: error
