@@ -152,7 +152,7 @@ jobs:
             curl -LSs https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh | bash -s dev-susfs
           fi
 
-            - name: Apply SUSFS patches (KSUN only)
+       - name: Apply SUSFS patches (KSUN only)
         if: matrix.ksu == 'KSUN'
         working-directory: kernel
         run: |
