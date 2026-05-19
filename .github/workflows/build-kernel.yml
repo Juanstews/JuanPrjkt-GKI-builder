@@ -147,7 +147,7 @@ jobs:
       - name: Clone kernel
         run: |
           git clone --depth=1 --branch "${{ inputs.kernel_ref }}" \
-            https://github.com/Juanstews/kernel_common-5.10 ok
+            https://github.com/Juanstews/kernel_common-5.10 kernel 
 
       # ── KERNELSU ─────────────────────────────────────────────
       - name: Apply KernelSU
