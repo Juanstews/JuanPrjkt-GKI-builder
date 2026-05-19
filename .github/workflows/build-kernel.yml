@@ -143,18 +143,7 @@ jobs:
           echo "=== gki_defconfig KSU entries ==="
           grep "CONFIG_KSU" arch/arm64/configs/gki_defconfig || echo "WARNING: No KSU configs in gki_defconfig!"
 
-      - name: Apply SUSFS patches (KSUN only)
-        if: matrix.ksu == 'KSUN'
-        working-directory: kernel
-        run: |
-          git clone https://gitlab.com/simonpunk/susfs4ksu/ -b gki-android12-5.10 sus
-          rm -rf sus/.git
-          susfs=sus/kernel_patches
-          cp -r "$susfs/fs" .
-          cp -r "$susfs/include" .
-          cp -r "$susfs/50_add_susfs_in_gki-android12-5.10.patch" .
-          patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch
-
+ 
       # ── Build ─────────────────────────────────────────────────────────────
       - name: Run build.sh
         working-directory: kernel
