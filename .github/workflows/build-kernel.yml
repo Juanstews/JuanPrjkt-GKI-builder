@@ -113,7 +113,7 @@ jobs:
       - name: Shallow-clone kernel source
         run: |
           git clone --depth=1 --branch "${{ inputs.kernel_ref }}" \
-            https://github.com/XTENSEI/kernel_common_5.10 kernel
+            https://github.com/Juanstews/kernel_common-5.10 kernel
 
       # ── KSU setup ─────────────────────────────────────────────────────────
       - name: Apply KernelSU (${{ matrix.ksu }})
