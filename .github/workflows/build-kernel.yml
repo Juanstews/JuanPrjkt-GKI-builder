@@ -70,28 +70,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ── INSTALL DEPENDENCIES ─────────────────────────────
       - name: Install dependencies
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
             bc bison flex build-essential libssl-dev libelf-dev \
             cpio kmod rsync zip patch curl ca-certificates \
-            python3 python3-pip python3-lxml git wget zstd \
-            lld llvm clang
-
-      # ── ENABLE 12GB SWAP ─────────────────────────────
-      - name: Enable 12GB Swap
-        run: |
-          sudo swapoff -a || true
-          sudo fallocate -l 12G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-
-          echo "Swap status:"
-          free -h
-          swapon --show
+            python3 python3-pip python3-lxml git wget zstd
 
       # ── NEUTRON CLANG ─────────────────────────────
       - name: Download Neutron Clang 19
@@ -164,70 +149,4 @@ jobs:
             echo -e "\nCONFIG_KSU=y\nCONFIG_KSU_SUSFS=n" >> arch/arm64/configs/gki_defconfig
           else
             curl -LSs https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh | bash -s dev-susfs
-            echo -e "\nCONFIG_KSU=y\nCONFIG_KSU_SUSFS=y" >> arch/arm64/configs/gki_defconfig
-          fi
-
-      # ── SUSFS PATCH ─────────────────────────────
-      - name: Apply SUSFS patches (KSUN only)
-        if: matrix.ksu == 'KSUN'
-        working-directory: kernel
-        run: |
-          set -e
-
-          git clone https://gitlab.com/simonpunk/susfs4ksu/ -b gki-android12-5.10 sus
-          rm -rf sus/.git
-
-          SUSFS_PATH="sus/kernel_patches"
-
-          cp -r "$SUSFS_PATH/fs" ./
-          cp -r "$SUSFS_PATH/include" ./
-          cp "$SUSFS_PATH/50_add_susfs_in_gki-android12-5.10.patch" ./
-
-          patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch
-
-      # ── BUILD ────────────────────────────────
-      - name: Build kernel
-        working-directory: kernel
-        env:
-          CLANG_PATH: ${{ env.CLANG_PATH }}
-        run: |
-          # Enable FULL LTO
-          scripts/config --file arch/arm64/configs/gki_defconfig \
-            -e LTO_CLANG \
-            -e LTO_CLANG_FULL \
-            -d LTO_CLANG_THIN \
-            -d THINLTO \
-            -d LTO_NONE
-
-          # Performance optimizations
-          scripts/config --file arch/arm64/configs/gki_defconfig \
-            -e CC_OPTIMIZE_FOR_PERFORMANCE
-
-          cp ../build.sh .
-          chmod +x build.sh
-
-          make ARCH=arm64 gki_defconfig
-
-          ./build.sh
-
-      # ── PACKAGE ──────────────────────────────
-      - name: Package
-        run: |
-          git clone --depth=1 https://github.com/XTENSEI/GrayRavens-anykernel anykernel
-          cp kernel/out/arch/arm64/boot/Image anykernel/Image
-          cd anykernel
-          zip -r9 "../${{ inputs.kernel_name }}-${{ matrix.ksu }}-${{ matrix.clang }}.zip" .
-
-      # ── UPLOAD IMAGE ──────────────────────────────
-      - name: Upload Image
-        uses: actions/upload-artifact@v4
-        with:
-          name: Image-${{ matrix.ksu }}-${{ matrix.clang }}
-          path: kernel/out/arch/arm64/boot/Image
-
-      # ── UPLOAD ZIP ──────────────────────────────
-      - name: Upload ZIP
-        uses: actions/upload-artifact@v4
-        with:
-          name: ZIP-${{ matrix.ksu }}-${{ matrix.clang }}
-          path: "*.zip"
+            echo -e "\nCONFIG_KSU=y\nCONFIG_KSU_SUSFS=y" >
