@@ -83,7 +83,20 @@ jobs:
           ./antman -S=10032024
           ./antman --patch=glibc
           echo "Neutron Clang 19 ready."
+   # ── Yuki Clang 23 ───────────────────────────────────────────────
+- name: Download Yuki Clang 23
+  if: matrix.clang == 'YUKI_23'
+  run: |
+    mkdir -p ~/toolchain/yuki-clang
+    cd ~/toolchain/yuki-clang
 
+    wget -O yuki-clang.tar.zst \
+      "https://usc1.contabostorage.com/ab57618a161b456a8d009c2e2de4a408:xperience/toolchains/yuki-clang-+bolt-20260124.tar.zst"
+
+    tar --use-compress-program=unzstd -xvf yuki-clang.tar.zst
+    rm -f yuki-clang.tar.zst
+
+    echo "Yuki Clang 23 ready."
       # ── AOSP Clang r445002 ────────────────────────────────────────────────
       - name: Cache AOSP Clang r445002
         if: matrix.clang == 'AOSP_12'
