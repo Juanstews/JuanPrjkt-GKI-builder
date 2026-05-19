@@ -67,7 +67,7 @@ jobs:
         clang: ${{ fromJson(needs.setup.outputs.clang_variants) }}
 
     steps:
-      - name: Checkout workflow repo
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Install dependencies
@@ -78,7 +78,7 @@ jobs:
             cpio kmod rsync zip patch curl ca-certificates \
             python3 python3-pip python3-lxml git wget zstd
 
-      # ── Neutron 19 ─────────────────────────────
+      # ── NEUTRON CLANG ─────────────────────────────
       - name: Download Neutron Clang 19
         if: matrix.clang == 'NEUTRON_19'
         run: |
@@ -89,7 +89,7 @@ jobs:
           ./antman -S=10032024
           ./antman --patch=glibc
 
-      # ── AOSP Clang ─────────────────────────────
+      # ── AOSP CLANG ─────────────────────────────
       - name: Cache AOSP Clang
         if: matrix.clang == 'AOSP_12'
         id: cache-aosp
@@ -105,7 +105,7 @@ jobs:
             https://github.com/AOSP-12/prebuilts_clang_host_linux-x86_clang-r445002.git \
             ~/toolchain/aosp-clang
 
-      # ── Yuki Clang 23 ──────────────────────────
+      # ── YUKI CLANG ─────────────────────────────
       - name: Download Yuki Clang 23
         if: matrix.clang == 'YUKI_23'
         run: |
@@ -118,7 +118,7 @@ jobs:
           tar --use-compress-program=unzstd -xvf yuki.tar.zst
           rm -f yuki.tar.zst
 
-      # ── Export CLANG_PATH ─────────────────────
+      # ── EXPORT CLANG PATH ─────────────────────────
       - name: Export CLANG_PATH
         run: |
           case "${{ matrix.clang }}" in
@@ -133,13 +133,13 @@ jobs:
               ;;
           esac
 
-      # ── Kernel source ─────────────────────────
+      # ── CLONE KERNEL ─────────────────────────────
       - name: Clone kernel
         run: |
           git clone --depth=1 --branch "${{ inputs.kernel_ref }}" \
             https://github.com/Juanstews/kernel_common-5.10 kernel
 
-      # ── KSU setup ─────────────────────────────
+      # ── KERNELSU SETUP ─────────────────────────────
       - name: Apply KernelSU
         if: matrix.ksu != 'VANILLA'
         working-directory: kernel
@@ -152,7 +152,25 @@ jobs:
             echo -e "\nCONFIG_KSU=y\nCONFIG_KSU_SUSFS=y" >> arch/arm64/configs/gki_defconfig
           fi
 
-      # ── Build ────────────────────────────────
+      # ── SUSFS PATCH (PatchOnSusfs) ─────────────────────────────
+      - name: Apply SUSFS patches (KSUN only)
+        if: matrix.ksu == 'KSUN'
+        working-directory: kernel
+        run: |
+          set -e
+
+          git clone https://gitlab.com/simonpunk/susfs4ksu/ -b gki-android12-5.10 sus
+          rm -rf sus/.git
+
+          SUSFS_PATH="sus/kernel_patches"
+
+          cp -r "$SUSFS_PATH/fs" ./
+          cp -r "$SUSFS_PATH/include" ./
+          cp "$SUSFS_PATH/50_add_susfs_in_gki-android12-5.10.patch" ./
+
+          patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch
+
+      # ── BUILD ────────────────────────────────
       - name: Build kernel
         working-directory: kernel
         env:
@@ -162,7 +180,7 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
-      # ── Package ──────────────────────────────
+      # ── PACKAGE ──────────────────────────────
       - name: Package
         run: |
           git clone --depth=1 https://github.com/XTENSEI/GrayRavens-anykernel anykernel
