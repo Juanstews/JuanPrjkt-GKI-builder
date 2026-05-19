@@ -95,7 +95,7 @@ scripts/config --file out/.config \
 
 # ── Build kernel ─────────────────────────────────────────────────────
 echo "Building kernel..."
-make -j"$(nproc --all)" O=out Image
+make -j"$(nproc --all)" O=out V=1 Image
 
 # ── KMI validation ───────────────────────────────────────────────────
 echo "Running KMI validation..."
