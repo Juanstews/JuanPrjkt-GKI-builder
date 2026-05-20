@@ -25,10 +25,10 @@ echo "Toolchain path  : $CLANG_PATH"
 echo "Clang version   : $("$CLANG_PATH/bin/clang" --version | head -n1)"
 
 # ── Compiler string (shown in /proc/version) ─────────────────────────────────
-if [ "${CLANG_VARIANT}" = "NEUTRON_19" ]; then
+if [ "${CLANG_VARIANT}" = "NEUTRON-19" ]; then
     COMPILER_STRING="Neutron Clang 19.0.0 +PGO +BOLT +Polly +ThinLTO +O3"
-elif [ "${CLANG_VARIANT}" = "AOSP_12" ]; then
-    COMPILER_STRING="AOSP Clang r416183b (LLVM 12.0.7)"
+elif [ "${CLANG_VARIANT}" = "CLANG-12" ]; then
+    COMPILER_STRING="AOSP Clang r416183b (LLVM 12.0.5)"
 else
     COMPILER_STRING="$("$CLANG_PATH/bin/clang" --version | head -n1)"
 fi
