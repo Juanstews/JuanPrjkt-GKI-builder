@@ -24,21 +24,18 @@ echo "CLANG_VARIANT   : '${CLANG_VARIANT}'"
 echo "Toolchain path  : $CLANG_PATH"
 echo "Clang version   : $("$CLANG_PATH/bin/clang" --version | head -n1)"
 
-# ── Compiler string (shown in kernel version) ────────────────────────────────
+# ── Compiler string (shown in /proc/version) ─────────────────────────────────
 if [ "${CLANG_VARIANT}" = "NEUTRON_19" ]; then
-    export KBUILD_COMPILER_STRING="Neutron Clang 19.0.0 +PGO +BOLT +Polly +ThinLTO +O3"
+    COMPILER_STRING="Neutron Clang 19.0.0 +PGO +BOLT +Polly +ThinLTO +O3"
 elif [ "${CLANG_VARIANT}" = "AOSP_12" ]; then
-    export KBUILD_COMPILER_STRING="AOSP Clang r445002 (LLVM 12.0.5)"
+    COMPILER_STRING="AOSP Clang r445002 (LLVM 12.0.5)"
 else
-    export KBUILD_COMPILER_STRING="$("$CLANG_PATH/bin/clang" --version | head -n1)"
+    COMPILER_STRING="$("$CLANG_PATH/bin/clang" --version | head -n1)"
 fi
 
-echo "Compiler string : $KBUILD_COMPILER_STRING"
+echo "Compiler string : $COMPILER_STRING"
 
 # ── KCFLAGS ──────────────────────────────────────────────────────────────────
-# -march=armv8.2-a  : safe baseline for all SD/Dimensity chips on Android 12
-# -mtune=cortex-a55 : tune for little cores (handle most background work)
-# -w                : suppress warnings, keep log clean
 export KCFLAGS="-w -march=armv8.2-a -mtune=cortex-a55"
 
 # ── NTSYNC SELinux policy injection ─────────────────────────────────────────
@@ -79,7 +76,9 @@ scripts/config --file out/.config \
 
 # ── Build kernel image ───────────────────────────────────────────────────────
 echo "Building kernel image..."
-make -j$(nproc --all) O=out Image
+make -j$(nproc --all) O=out \
+    KBUILD_COMPILER_STRING="${COMPILER_STRING}" \
+    Image
 
 # ── KMI validation ───────────────────────────────────────────────────────────
 echo "Running KMI validation..."
