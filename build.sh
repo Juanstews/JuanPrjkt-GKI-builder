@@ -114,7 +114,7 @@ scripts/config --file out/.config \
 
 # ── BUILD ─────────────────────────────────────────────────────────────
 echo "Building kernel..."
-make ARCH=arm64 -j"$(nproc --all)" O=out Image
+make ARCH=arm64 -j"$(nproc --all)" O=out V=1 Image
 
 # ── KMI validation ───────────────────────────────────────────────────
 echo "Running KMI validation..."
