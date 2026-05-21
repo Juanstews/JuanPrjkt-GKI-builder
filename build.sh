@@ -27,6 +27,8 @@ echo "Clang version   : $("$CLANG_PATH/bin/clang" --version | head -n1)"
 # ── Compiler string (shown in /proc/version) ─────────────────────────────────
 if [ "${CLANG_VARIANT}" = "NEUTRON-19" ]; then
     COMPILER_STRING="Neutron Clang 19.0.0 +PGO +BOLT +Polly +ThinLTO +O3"
+elif [ "${CLANG_VARIANT}" = "YUKI-18" ]; then
+    COMPILER_STRING="Yuki Clang 18.0.0 +PGO +LTO +BOLT"
 elif [ "${CLANG_VARIANT}" = "CLANG-12" ]; then
     COMPILER_STRING="AOSP Clang r416183b (LLVM 12.0.5)"
 else
@@ -62,9 +64,11 @@ else
 fi
 
 # ── Patch mkcompile_h to force compiler string ───────────────────────────────
-# The kernel reads compiler string from scripts/mkcompile_h directly
+# scripts/mkcompile_h queries compiler directly at build time, overriding
+# KBUILD_COMPILER_STRING passed to make — patch it to force our string
 echo "Patching mkcompile_h to override compiler string..."
-sed -i "s|LINUX_COMPILER=.*|LINUX_COMPILER=\"${COMPILER_STRING}\"|g" scripts/mkcompile_h 2>/dev/null || true
+sed -i "s|LINUX_COMPILER=.*|LINUX_COMPILER=\"${COMPILER_STRING}\"|g" \
+    scripts/mkcompile_h 2>/dev/null || true
 
 # ── Generate kernel config ───────────────────────────────────────────────────
 echo "Generating GKI defconfig..."
