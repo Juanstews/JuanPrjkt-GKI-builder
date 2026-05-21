@@ -103,13 +103,13 @@ echo "Checking for x86 leakage..."
 grep CONFIG_X86 out/.config || echo "OK: No X86 config"
 
 # ── LTO config ───────────────────────────────────────────────────────
-echo "Configuring FULL LTO..."
+echo "Configuring THIN LTO..."
 
 scripts/config --file out/.config \
 -e LTO_CLANG \
 -d LTO_NONE \
--d LTO_CLANG_THIN \
--e LTO_CLANG_FULL
+-e LTO_CLANG_THIN \
+-d LTO_CLANG_FULL
 
 # ── BUILD ─────────────────────────────────────────────────────────────
 echo "Building kernel..."
