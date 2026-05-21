@@ -106,10 +106,11 @@ grep CONFIG_X86 out/.config || echo "OK: No X86 config"
 echo "Configuring THIN LTO..."
 
 scripts/config --file out/.config \
--e LTO_CLANG \
--d LTO_NONE \
--e LTO_CLANG_THIN \
--d LTO_CLANG_FULL
+    -e LTO_CLANG \
+    -d LTO_NONE \
+    -e LTO_CLANG_THIN \
+    -d LTO_CLANG_FULL \
+    -e THINLTO
 
 # ── BUILD ─────────────────────────────────────────────────────────────
 echo "Building kernel..."
