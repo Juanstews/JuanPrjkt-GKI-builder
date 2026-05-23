@@ -24,17 +24,6 @@ echo "CLANG_VARIANT   : '${CLANG_VARIANT}'"
 echo "Toolchain path  : $CLANG_PATH"
 echo "Clang version   : $("$CLANG_PATH/bin/clang" --version | head -n1)"
 
-# ── Compiler string (shown in /proc/version) ─────────────────────────────────
-if [ "${CLANG_VARIANT}" = "NEUTRON-19" ]; then
-    COMPILER_STRING="Neutron Clang 19.0.0 +PGO +BOLT +Polly +ThinLTO +O3"
-elif [ "${CLANG_VARIANT}" = "CLANG-12" ]; then
-    COMPILER_STRING="AOSP Clang r416183b (LLVM 12.0.5)"
-else
-    COMPILER_STRING="$("$CLANG_PATH/bin/clang" --version | head -n1)"
-fi
-
-echo "Compiler string : $COMPILER_STRING"
-
 # ── KCFLAGS ──────────────────────────────────────────────────────────────────
 export KCFLAGS="-w -march=armv8.2-a -mtune=cortex-a55"
 
@@ -43,13 +32,13 @@ RULES_FILE="drivers/kernelsu/selinux/rules.c"
 if [ -f "$RULES_FILE" ]; then
     echo "Injecting NTSYNC SELinux rules into KernelSU..."
     sed -i '/rcu_assign_pointer(selinux_state.policy, pol);/i \
-    \/\/ NTSYNC SEPol — allow kernel worker to chmod and relabel \/dev\/ntsync\n\
+    // NTSYNC SEPol — allow kernel worker to chmod and relabel /dev/ntsync\n\
     ksu_allow(db, "kernel", "device", "chr_file", "setattr");\n\
     ksu_allow(db, "kernel", "device", "chr_file", "relabelfrom");\n\
     ksu_allow(db, "kernel", "gpu_device", "chr_file", "relabelto");\n\
     ksu_allow(db, "kernel", "gpu_device", "chr_file", "setattr");\n\
     \n\
-    \/\/ NTSYNC SEPol — allow Winlator (untrusted_app) to use \/dev\/ntsync\n\
+    // NTSYNC SEPol — allow Winlator (untrusted_app) to use /dev/ntsync\n\
     ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "read");\n\
     ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "write");\n\
     ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "open");\n\
@@ -60,11 +49,6 @@ if [ -f "$RULES_FILE" ]; then
 else
     echo "No KernelSU rules.c found — skipping NTSYNC SELinux injection."
 fi
-
-# ── Patch mkcompile_h to force compiler string ───────────────────────────────
-echo "Patching mkcompile_h to override compiler string..."
-sed -i "s|LINUX_COMPILER=.*|LINUX_COMPILER=\"${COMPILER_STRING}\"|g" \
-    scripts/mkcompile_h 2>/dev/null || true
 
 # ── Generate kernel config ───────────────────────────────────────────────────
 echo "Generating GKI defconfig..."
@@ -81,9 +65,7 @@ scripts/config --file out/.config \
 
 # ── Build kernel image ───────────────────────────────────────────────────────
 echo "Building kernel image..."
-make -j$(nproc --all) O=out \
-    KBUILD_COMPILER_STRING="${COMPILER_STRING}" \
-    Image
+make -j$(nproc --all) O=out Image
 
 # ── Post-build vmlinux verification ─────────────────────────────────────────
 echo ""
