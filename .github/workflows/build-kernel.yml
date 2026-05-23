@@ -12,10 +12,11 @@ on:
           - ALL
         default: KWS
       clang_variant:
-        description: 'Clang toolchain (ALL = YUKI-22 + NEUTRON-19 + CLANG-12)'
+        description: 'Clang toolchain Selection'
         type: choice
         options:
           - YUKI-22
+          - AOSP-19-MAX
           - NEUTRON-19
           - CLANG-12
           - ALL
@@ -47,7 +48,7 @@ jobs:
           fi
 
           if [ "${{ inputs.clang_variant }}" = "ALL" ]; then
-            echo 'clang_variants=["YUKI-22","NEUTRON-19","CLANG-12"]' >> $GITHUB_OUTPUT
+            echo 'clang_variants=["YUKI-22","AOSP-19-MAX","NEUTRON-19","CLANG-12"]' >> $GITHUB_OUTPUT
           else
             echo 'clang_variants=["${{ inputs.clang_variant }}"]' >> $GITHUB_OUTPUT
           fi
@@ -84,19 +85,16 @@ jobs:
           rm -f yuki-clang-+bolt-20251211.tar.zst
           echo "Yuki Clang 22 ready."
 
-      - name: Verify Yuki Clang optimizations
-        if: matrix.clang == 'YUKI-22'
+      # ── AOSP Clang r536225 (LLVM 19 Max Optimized) ────────────────────────
+      - name: Download AOSP Clang 19 Max Optimized
+        if: matrix.clang == 'AOSP-19-MAX'
         run: |
-          echo "=== Clang binary BOLT check ==="
-          readelf -S ~/toolchain/yuki-clang/bin/clang \
-            | grep -i "bolt\|llvm_bb" || echo "No BOLT sections found"
-          echo "=== Clang build comment ==="
-          readelf -p .comment ~/toolchain/yuki-clang/bin/clang 2>/dev/null \
-            | head -20 || echo "No .comment section"
-          echo "=== PGO check ==="
-          strings ~/toolchain/yuki-clang/bin/clang \
-            | grep -i "profdata\|pgo\|instrumented" | head -10 \
-            || echo "No PGO strings found"
+          mkdir -p ~/toolchain/aosp-r536225
+          cd ~/toolchain/aosp-r536225
+          curl -LO "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r536225.tar.gz"
+          tar -xzf clang-r536225.tar.gz
+          rm -f clang-r536225.tar.gz
+          echo "AOSP Optimized Clang 19 Ready."
 
       # ── Neutron 19 ────────────────────────────────────────────────────────
       - name: Download Neutron Clang 19
@@ -109,20 +107,6 @@ jobs:
           ./antman -S=10032024
           ./antman --patch=glibc
           echo "Neutron Clang 19 ready."
-
-      - name: Verify Neutron Clang optimizations
-        if: matrix.clang == 'NEUTRON-19'
-        run: |
-          echo "=== Clang binary BOLT check ==="
-          readelf -S ~/toolchain/neutron-clang/bin/clang \
-            | grep -i "bolt\|llvm_bb" || echo "No BOLT sections found"
-          echo "=== Clang build comment ==="
-          readelf -p .comment ~/toolchain/neutron-clang/bin/clang 2>/dev/null \
-            | head -20 || echo "No .comment section"
-          echo "=== PGO check ==="
-          strings ~/toolchain/neutron-clang/bin/clang \
-            | grep -i "profdata\|pgo\|instrumented" | head -10 \
-            || echo "No PGO strings found"
 
       # ── AOSP Clang r416183b (LLVM 12.0.5) ────────────────────────────────
       - name: Cache AOSP Clang r416183b
@@ -141,11 +125,26 @@ jobs:
             ~/toolchain/aosp-clang-r416183b
           echo "AOSP Clang r416183b (LLVM 12.0.5) ready."
 
+      # ── Verify Selected Clang Optimizations ────────────────────────────────
+      - name: Run Clang Audit Verification
+        run: |
+          case "${{ matrix.clang }}" in
+            YUKI-22)     TC_PATH="$HOME/toolchain/yuki-clang/bin/clang" ;;
+            AOSP-19-MAX) TC_PATH="$HOME/toolchain/aosp-r536225/bin/clang" ;;
+            NEUTRON-19)  TC_PATH="$HOME/toolchain/neutron-clang/bin/clang" ;;
+            CLANG-12)    TC_PATH="$HOME/toolchain/aosp-clang-r416183b/bin/clang" ;;
+          esac
+          echo "=== Auditing: ${{ matrix.clang }} ==="
+          $TC_PATH --version | head -n 2 || true
+          readelf -S $TC_PATH | grep -iE "bolt|llvm_bb" || echo "No BOLT layout found"
+          strings $TC_PATH | grep -iE "regalloc-model|inline-model|mlgo" | head -n 2 || echo "No MLGO models embedded"
+
       # ── Export CLANG_PATH ─────────────────────────────────────────────────
       - name: Export CLANG_PATH
         run: |
           case "${{ matrix.clang }}" in
             YUKI-22)    echo "CLANG_PATH=$HOME/toolchain/yuki-clang" >> $GITHUB_ENV ;;
+            AOSP-19-MAX)echo "CLANG_PATH=$HOME/toolchain/aosp-r536225" >> $GITHUB_ENV ;;
             NEUTRON-19) echo "CLANG_PATH=$HOME/toolchain/neutron-clang" >> $GITHUB_ENV ;;
             CLANG-12)   echo "CLANG_PATH=$HOME/toolchain/aosp-clang-r416183b" >> $GITHUB_ENV ;;
           esac
