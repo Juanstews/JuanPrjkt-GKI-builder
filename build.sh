@@ -1,5 +1,7 @@
 #!/bin/bash
+
 # android12-5.10 GKI Kernel Build Script
+
 set -e
 
 # Error handler
@@ -20,30 +22,45 @@ fi
 
 export PATH="${CLANG_PATH}/bin:${PATH}"
 
-echo "CLANG_VARIANT   : '${CLANG_VARIANT}'"
-echo "Toolchain path  : $CLANG_PATH"
-echo "Clang version   : $("$CLANG_PATH/bin/clang" --version | head -n1)"
+echo "CLANG_VARIANT : '${CLANG_VARIANT}'"
+echo "Toolchain path : $CLANG_PATH"
+echo "Clang version  : $("$CLANG_PATH/bin/clang" --version | head -n1)"
+
+# ── Polly availability check ─────────────────────────────────────────────────
+POLLY_FLAGS=""
+if "$CLANG_PATH/bin/clang" -mllvm -polly -x c /dev/null -o /dev/null 2>/dev/null; then
+    echo "Polly : available — enabling loop optimizations"
+    POLLY_FLAGS="-mllvm -polly \
+ -mllvm -polly-run-dce \
+ -mllvm -polly-run-inliner \
+ -mllvm -polly-reschedule=1 \
+ -mllvm -polly-loopfusion-greedy=1 \
+ -mllvm -polly-vectorizer=stripmine \
+ -mllvm -polly-detect-keep-going"
+else
+    echo "Polly : not available in this toolchain — skipping"
+fi
 
 # ── KCFLAGS ──────────────────────────────────────────────────────────────────
-export KCFLAGS="-w -march=armv8.2-a -mtune=cortex-a55"
+export KCFLAGS="-w -march=armv8.2-a -mtune=cortex-a55 ${POLLY_FLAGS}"
 
 # ── NTSYNC SELinux policy injection ─────────────────────────────────────────
 RULES_FILE="drivers/kernelsu/selinux/rules.c"
 if [ -f "$RULES_FILE" ]; then
     echo "Injecting NTSYNC SELinux rules into KernelSU..."
     sed -i '/rcu_assign_pointer(selinux_state.policy, pol);/i \
-    // NTSYNC SEPol — allow kernel worker to chmod and relabel /dev/ntsync\n\
-    ksu_allow(db, "kernel", "device", "chr_file", "setattr");\n\
-    ksu_allow(db, "kernel", "device", "chr_file", "relabelfrom");\n\
-    ksu_allow(db, "kernel", "gpu_device", "chr_file", "relabelto");\n\
-    ksu_allow(db, "kernel", "gpu_device", "chr_file", "setattr");\n\
-    \n\
-    // NTSYNC SEPol — allow Winlator (untrusted_app) to use /dev/ntsync\n\
-    ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "read");\n\
-    ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "write");\n\
-    ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "open");\n\
-    ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "ioctl");\n\
-    ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "map");\n' \
+// NTSYNC SEPol — allow kernel worker to chmod and relabel /dev/ntsync\n\
+ksu_allow(db, "kernel", "device", "chr_file", "setattr");\n\
+ksu_allow(db, "kernel", "device", "chr_file", "relabelfrom");\n\
+ksu_allow(db, "kernel", "gpu_device", "chr_file", "relabelto");\n\
+ksu_allow(db, "kernel", "gpu_device", "chr_file", "setattr");\n\
+\n\
+// NTSYNC SEPol — allow Winlator (untrusted_app) to use /dev/ntsync\n\
+ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "read");\n\
+ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "write");\n\
+ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "open");\n\
+ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "ioctl");\n\
+ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "map");\n' \
     "$RULES_FILE"
     echo "NTSYNC SELinux rules injected."
 else
@@ -85,6 +102,9 @@ if [ -d out/.thinlto-cache ] && [ "$(ls -A out/.thinlto-cache)" ]; then
 else
     echo "No ThinLTO cache found"
 fi
+
+echo "--- Polly flags used ---"
+echo "KCFLAGS: $KCFLAGS"
 
 echo "--- Kernel compile.h ---"
 cat out/include/generated/compile.h 2>/dev/null || echo "compile.h not found"
