@@ -46,27 +46,11 @@ export KCFLAGS="-w -march=armv8.2-a+crypto+fp16+dotprod -mtune=cortex-a55 \
   -fno-semantic-interposition \
   ${POLLY_FLAGS}"
 
-# ── NTSYNC SELinux policy injection ─────────────────────────────────────────
-RULES_FILE="drivers/kernelsu/selinux/rules.c"
-if [ -f "$RULES_FILE" ]; then
-    echo "Injecting NTSYNC SELinux rules into KernelSU..."
-    sed -i '/rcu_assign_pointer(selinux_state.policy, pol);/i \
-// NTSYNC SEPol — allow kernel worker to chmod and relabel /dev/ntsync\n\
-ksu_allow(db, "kernel", "device", "chr_file", "setattr");\n\
-ksu_allow(db, "kernel", "device", "chr_file", "relabelfrom");\n\
-ksu_allow(db, "kernel", "gpu_device", "chr_file", "relabelto");\n\
-ksu_allow(db, "kernel", "gpu_device", "chr_file", "setattr");\n\
-\n\
-// NTSYNC SEPol — allow Winlator (untrusted_app) to use /dev/ntsync\n\
-ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "read");\n\
-ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "write");\n\
-ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "open");\n\
-ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "ioctl");\n\
-ksu_allow(db, "untrusted_app", "gpu_device", "chr_file", "map");\n' \
-    "$RULES_FILE"
-    echo "NTSYNC SELinux rules injected."
+# ── SELinux policy injection ─────────────────────────────────────────────────
+if [ -f "selinux.sh" ]; then
+    source ./selinux.sh
 else
-    echo "No KernelSU rules.c found — skipping NTSYNC SELinux injection."
+    echo "No selinux.sh found — skipping SELinux injection."
 fi
 
 # ── Generate kernel config ───────────────────────────────────────────────────
