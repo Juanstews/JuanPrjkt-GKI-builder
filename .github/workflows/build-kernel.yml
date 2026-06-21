@@ -55,7 +55,6 @@ jobs:
           fi
 
   notify-started:
-    name: Notify Telegram (started)
     needs: setup
     runs-on: ubuntu-latest
     outputs:
@@ -67,21 +66,9 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
         run: |
-          MSG="<b>🚀 Kernel Build Started</b>%0A%0A"
-          MSG+="<b>Name:</b> <code>${{ inputs.kernel_name }}</code>%0A"
-          MSG+="<b>Ref:</b> <code>${{ inputs.kernel_ref }}</code>%0A"
-          MSG+="<b>Matrix:</b> <code>${{ needs.setup.outputs.ksu_variants }} | ${{ needs.setup.outputs.clang_variants }}</code>%0A%0A"
-          MSG+="➖➖➖➖➖➖➖➖➖➖%0A"
-          MSG+="🔗 <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>View Build Progress</a>%0A"
-          MSG+="🆔 <b>Run:</b> <code>#${{ github.run_number }}</code>"
-
-          RES=$(curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
-            -d chat_id="$TG_CHAT_ID" \
-            --data-urlencode text="$MSG" \
-            -d parse_mode="HTML" \
-            -d disable_web_page_preview=true)
-
-          MSG_ID=$(echo "$RES" | jq -r '.result.message_id')
+          MSG="⚙️ Build Started%0A📋 Workflow: Kernel Build%0A📱 Kernel: ${{ inputs.kernel_name }}%0A🌿 Ref: ${{ inputs.kernel_ref }}%0A🔍 <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>Watch on GitHub Actions</a>"
+          RES=$(curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" -d chat_id="$TG_CHAT_ID" --data-urlencode text="$MSG" -d parse_mode="HTML" -d disable_web_page_preview=true)
+          MSG_ID=$(echo "$RES" | jq -r '.result.message_id' || echo "")
           echo "message_id=$MSG_ID" >> $GITHUB_OUTPUT
 
   build:
@@ -93,7 +80,7 @@ jobs:
         ksu: ${{ fromJson(needs.setup.outputs.ksu_variants) }}
         clang: ${{ fromJson(needs.setup.outputs.clang_variants) }}
     steps:
-      - name: Checkout workflow repo
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Record Start Time
@@ -102,21 +89,28 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends bc bison flex build-essential libssl-dev libelf-dev cpio kmod rsync zip patch curl ca-certificates python3 python3-pip python3-lxml git wget binutils zstd
+          sudo apt-get install -y --no-install-recommends \
+            bc bison flex build-essential libssl-dev libelf-dev \
+            cpio kmod rsync zip patch curl ca-certificates \
+            python3 python3-pip python3-lxml git wget binutils zstd
 
       - name: Download Clang 19
         if: matrix.clang == 'CLANG-19'
-        run: git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r536225.git ~/toolchain/aosp-r536225
+        run: |
+          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r536225.git ~/toolchain/aosp-r536225
 
-      - name: Cache & Download Clang 12
+      - name: Cache AOSP Clang r416183b
         if: matrix.clang == 'CLANG-12'
+        id: cache-aosp-12
         uses: actions/cache@v4
         with:
           path: ~/toolchain/aosp-clang-r416183b
           key: aosp-clang-r416183b-x86_64
+
       - name: Download AOSP Clang r416183b
-        if: matrix.clang == 'CLANG-12' && steps.cache.outputs.cache-hit != 'true'
-        run: git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git ~/toolchain/aosp-clang-r416183b
+        if: matrix.clang == 'CLANG-12' && steps.cache-aosp-12.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git ~/toolchain/aosp-clang-r416183b
 
       - name: Export CLANG_PATH
         run: |
@@ -126,9 +120,10 @@ jobs:
           esac
 
       - name: Shallow-clone kernel source
-        run: git clone --depth=1 --branch "${{ inputs.kernel_ref }}" https://github.com/XTENSEI/kernel_common_5.10 kernel
+        run: |
+          git clone --depth=1 --branch "${{ inputs.kernel_ref }}" https://github.com/XTENSEI/kernel_common_5.10 kernel
 
-      - name: Apply KernelSU & Patches
+      - name: Apply KernelSU
         if: matrix.ksu != 'VNL'
         working-directory: kernel
         run: |
@@ -139,16 +134,24 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh" | bash -s dev-susfs
             printf '\nCONFIG_KSU=y\nCONFIG_KSU_MANUAL_SU=n\nCONFIG_KSU_SUSFS=y\n' >> arch/arm64/configs/gki_defconfig
           fi
-          if [ "${{ matrix.ksu }}" = "KSUN" ]; then
-            git clone https://gitlab.com/simonpunk/susfs4ksu/ -b gki-android12-5.10 sus
-            cp -r sus/kernel_patches/fs .
-            cp -r sus/kernel_patches/include .
-            patch -p1 < sus/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch
-          fi
+
+      - name: Apply SUSFS patches (KSUN only)
+        if: matrix.ksu == 'KSUN'
+        working-directory: kernel
+        run: |
+          git clone https://gitlab.com/simonpunk/susfs4ksu/ -b gki-android12-5.10 sus
+          rm -rf sus/.git
+          susfs=sus/kernel_patches
+          cp -r "$susfs/fs" .
+          cp -r "$susfs/include" .
+          cp -r "$susfs/50_add_susfs_in_gki-android12-5.10.patch" .
+          patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch
 
       - name: Set LOCALVERSION
         working-directory: kernel
-        run: printf '\nCONFIG_LOCALVERSION="-${{ inputs.kernel_name }}-${{ matrix.ksu }}"\n' >> arch/arm64/configs/gki_defconfig
+        run: |
+          LOCALVER="-${{ inputs.kernel_name }}-${{ matrix.ksu }}"
+          printf '\nCONFIG_LOCALVERSION="%s"\n' "$LOCALVER" >> arch/arm64/configs/gki_defconfig
 
       - name: Run build.sh
         working-directory: kernel
@@ -161,15 +164,17 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
-      - name: Package AnyKernel3
+      - name: Package with AnyKernel3
         run: |
           ZIP_NAME="${{ inputs.kernel_name }}-${{ matrix.ksu }}-${{ matrix.clang }}"
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
           git clone --depth=1 https://github.com/XTENSEI/GrayRavens-anykernel anykernel
           cp kernel/out/arch/arm64/boot/Image anykernel/Image
-          cd anykernel && zip -r9 "../${ZIP_NAME}.zip" . --exclude="*.git*"
+          cd anykernel
+          zip -r9 "../${ZIP_NAME}.zip" . --exclude="*.git*" --exclude="README.md" --exclude="*.placeholder"
 
-      - name: Upload Artifact
+      - name: Upload flashable zip
+        id: upload-zip
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ZIP_NAME }}
@@ -190,15 +195,10 @@ jobs:
           MESSAGE_ID: ${{ needs.notify-started.outputs.message_id }}
           SUCCESS_STICKER: "CAACAgUAAxkBAAFNAUpqN0lKsS2P_ew34Ldk-yA5xhg4bAAC0RgAAsMgYFdOfiL7ZJKFUDwE"
         run: |
-          MSG="<b>✅ Kernel Build Succeeded</b>%0A%0A"
-          MSG+="<b>Name:</b> <code>${{ inputs.kernel_name }}</code>%0A"
-          MSG+="<b>Variant:</b> <code>${{ matrix.ksu }} | ${{ matrix.clang }}</code>%0A"
-          MSG+="<b>Time:</b> <code>$BUILD_TIME</code>%0A%0A"
-          MSG+="➖➖➖➖➖➖➖➖➖➖%0A"
-          MSG+="📥 <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>Download Artifacts</a>"
-
-          REPLY_PARAM="-d reply_to_message_id=$MESSAGE_ID"
-          curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" -d chat_id="$TG_CHAT_ID" $REPLY_PARAM --data-urlencode text="$MSG" -d parse_mode="HTML"
+          MSG="✅ Build Succeeded%0A📋 Workflow: Kernel Build%0A📱 Kernel: ${{ inputs.kernel_name }}%0A🧬 Variant: ${{ matrix.ksu }} | ${{ matrix.clang }}%0A⏱️ Time: $BUILD_TIME%0A🔗 <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${{ steps.upload-zip.outputs.artifact-id }}'>Download Artifact</a>"
+          REPLY_PARAM=""
+          if [ -n "$MESSAGE_ID" ] && [ "$MESSAGE_ID" != "null" ]; then REPLY_PARAM="-d reply_to_message_id=$MESSAGE_ID"; fi
+          curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" -d chat_id="$TG_CHAT_ID" $REPLY_PARAM --data-urlencode text="$MSG" -d parse_mode="HTML" -d disable_web_page_preview=true
           curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendSticker" -d chat_id="$TG_CHAT_ID" $REPLY_PARAM -d sticker="$SUCCESS_STICKER"
 
       - name: Send Failed Notification
@@ -209,12 +209,8 @@ jobs:
           MESSAGE_ID: ${{ needs.notify-started.outputs.message_id }}
           FAIL_STICKER: "CAACAgIAAxkBAAFNAUxqN0lgFIm_LcQAAUJvYSHSyQABjIiDAALJQgACsjhYSljb2W62RQRlPAQ"
         run: |
-          MSG="<b>❌ Kernel Build Failed</b>%0A%0A"
-          MSG+="<b>Name:</b> <code>${{ inputs.kernel_name }}</code>%0A"
-          MSG+="<b>Variant:</b> <code>${{ matrix.ksu }} | ${{ matrix.clang }}</code>%0A"
-          MSG+="<b>Time elapsed:</b> <code>$BUILD_TIME</code>%0A%0A"
-          MSG+="🔍 <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>Check Logs</a>"
-
-          REPLY_PARAM="-d reply_to_message_id=$MESSAGE_ID"
-          curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" -d chat_id="$TG_CHAT_ID" $REPLY_PARAM --data-urlencode text="$MSG" -d parse_mode="HTML"
+          MSG="❌ Build Failed%0A📋 Workflow: Kernel Build%0A📱 Kernel: ${{ inputs.kernel_name }}%0A🧬 Variant: ${{ matrix.ksu }} | ${{ matrix.clang }}%0A⏱️ Time: $BUILD_TIME%0A🔍 <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>Check Logs</a>"
+          REPLY_PARAM=""
+          if [ -n "$MESSAGE_ID" ] && [ "$MESSAGE_ID" != "null" ]; then REPLY_PARAM="-d reply_to_message_id=$MESSAGE_ID"; fi
+          curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" -d chat_id="$TG_CHAT_ID" $REPLY_PARAM --data-urlencode text="$MSG" -d parse_mode="HTML" -d disable_web_page_preview=true
           curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendSticker" -d chat_id="$TG_CHAT_ID" $REPLY_PARAM -d sticker="$FAIL_STICKER"
