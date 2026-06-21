@@ -29,7 +29,7 @@ on:
         type: string
         default: android12-5.10
       kmi_symbol_check:
-        description: 'Run KMI symbol validation (KMI_function_symbols_test.py)'
+        description: 'Run KMI symbol validation'
         type: boolean
         default: true
 
@@ -102,15 +102,11 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends \
-            bc bison flex build-essential libssl-dev libelf-dev \
-            cpio kmod rsync zip patch curl ca-certificates \
-            python3 python3-pip python3-lxml git wget binutils zstd
+          sudo apt-get install -y --no-install-recommends bc bison flex build-essential libssl-dev libelf-dev cpio kmod rsync zip patch curl ca-certificates python3 python3-pip python3-lxml git wget binutils zstd
 
       - name: Download Clang 19
         if: matrix.clang == 'CLANG-19'
-        run: |
-          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r536225.git ~/toolchain/aosp-r536225
+        run: git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r536225.git ~/toolchain/aosp-r536225
 
       - name: Cache & Download Clang 12
         if: matrix.clang == 'CLANG-12'
@@ -120,16 +116,7 @@ jobs:
           key: aosp-clang-r416183b-x86_64
       - name: Download AOSP Clang r416183b
         if: matrix.clang == 'CLANG-12' && steps.cache.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git ~/toolchain/aosp-clang-r416183b
-
-      - name: Run Clang Audit
-        run: |
-          case "${{ matrix.clang }}" in
-            CLANG-19) TC_PATH="$HOME/toolchain/aosp-r536225/bin/clang" ;;
-            CLANG-12) TC_PATH="$HOME/toolchain/aosp-clang-r416183b/bin/clang" ;;
-          esac
-          $TC_PATH --version | head -n 2
+        run: git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git ~/toolchain/aosp-clang-r416183b
 
       - name: Export CLANG_PATH
         run: |
@@ -139,10 +126,9 @@ jobs:
           esac
 
       - name: Shallow-clone kernel source
-        run: |
-          git clone --depth=1 --branch "${{ inputs.kernel_ref }}" https://github.com/XTENSEI/kernel_common_5.10 kernel
+        run: git clone --depth=1 --branch "${{ inputs.kernel_ref }}" https://github.com/XTENSEI/kernel_common_5.10 kernel
 
-      - name: Apply KernelSU
+      - name: Apply KernelSU & Patches
         if: matrix.ksu != 'VNL'
         working-directory: kernel
         run: |
@@ -153,21 +139,16 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh" | bash -s dev-susfs
             printf '\nCONFIG_KSU=y\nCONFIG_KSU_MANUAL_SU=n\nCONFIG_KSU_SUSFS=y\n' >> arch/arm64/configs/gki_defconfig
           fi
-
-      - name: Apply SUSFS patches (KSUN)
-        if: matrix.ksu == 'KSUN'
-        working-directory: kernel
-        run: |
-          git clone https://gitlab.com/simonpunk/susfs4ksu/ -b gki-android12-5.10 sus
-          rm -rf sus/.git
-          cp -r sus/kernel_patches/fs .
-          cp -r sus/kernel_patches/include .
-          patch -p1 < sus/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch
+          if [ "${{ matrix.ksu }}" = "KSUN" ]; then
+            git clone https://gitlab.com/simonpunk/susfs4ksu/ -b gki-android12-5.10 sus
+            cp -r sus/kernel_patches/fs .
+            cp -r sus/kernel_patches/include .
+            patch -p1 < sus/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch
+          fi
 
       - name: Set LOCALVERSION
         working-directory: kernel
-        run: |
-          printf '\nCONFIG_LOCALVERSION="-${{ inputs.kernel_name }}-${{ matrix.ksu }}"\n' >> arch/arm64/configs/gki_defconfig
+        run: printf '\nCONFIG_LOCALVERSION="-${{ inputs.kernel_name }}-${{ matrix.ksu }}"\n' >> arch/arm64/configs/gki_defconfig
 
       - name: Run build.sh
         working-directory: kernel
@@ -180,15 +161,15 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
-      - name: Package with AnyKernel3
+      - name: Package AnyKernel3
         run: |
           ZIP_NAME="${{ inputs.kernel_name }}-${{ matrix.ksu }}-${{ matrix.clang }}"
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
           git clone --depth=1 https://github.com/XTENSEI/GrayRavens-anykernel anykernel
           cp kernel/out/arch/arm64/boot/Image anykernel/Image
-          cd anykernel && zip -r9 "../${ZIP_NAME}.zip" . --exclude="*.git*" --exclude="README.md"
+          cd anykernel && zip -r9 "../${ZIP_NAME}.zip" . --exclude="*.git*"
 
-      - name: Upload Artifacts
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ZIP_NAME }}
